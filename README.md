@@ -54,6 +54,9 @@ python dg_lightning/runs/train_hdg_selection_model.py --help
 python dg_lightning/runs/train_hdg_outcome_model.py --help
 ```
 
-
-
-## 9. Work in progress
+## Checklist
+- [x] Distributed training on multiple GPUs
+- [ ] Bash script to download data
+- [ ] HeckmanDG for multinomial outcomes
+- [ ] A Jupyter notebook tutorial on running HeckmanDG on custom data
+- [ ] Learning rate scheduling 
