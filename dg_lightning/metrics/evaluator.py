@@ -22,7 +22,7 @@ class MetricEvaluator(object):
         'vlcs',
         'celeba',
         'camelyon17',
-        'povertymap'
+        'poverty'
         'iwildcam',
         'rxrx1',
         'fmow',
@@ -35,6 +35,7 @@ class MetricEvaluator(object):
         'pacs',
         'vlcs',
         'camelyon17',
+        'poverty',
         'iwildcam',
         'rxrx1'
         'fmow',
@@ -98,7 +99,7 @@ class MetricEvaluator(object):
                 ('nll', cross_entropy_with_probs),
                 ('accuracy', multiclass_accuracy)
             ]
-        elif self.data == 'povertymap':
+        elif self.data == 'poverty':
             return [
                 ('mse', mean_squared_error),
                 ('pearson', pearson_correlation),
@@ -119,7 +120,7 @@ class MetricEvaluator(object):
                 ('accuracy', binary_accuracy)
             ]
         else:
-            raise ValueError(f"data={self.data} not recognized.")
+            raise ValueError(f"data={self.data} not recognized. Choose one of {self._supported_data}")
 
     def __call__(self,
                  y_pred: torch.FloatTensor,
