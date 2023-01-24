@@ -22,7 +22,7 @@ class MetricEvaluator(object):
         'vlcs',
         'celeba',
         'camelyon17',
-        'poverty'
+        'poverty',
         'iwildcam',
         'rxrx1',
         'fmow',
