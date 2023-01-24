@@ -1,12 +1,4 @@
-data: "camelyon17"
-backbone: "densenet121"
-pretrained: true
-augmentation: true
-randaugment: false
-optimizer: "sgd"
-learning_rate: 0.03
-weight_decay: 0.000001
-lr_scheduler: "cosine_decay"
+data: camelyon17
 train_domains:
 - 0
 - 3
@@ -15,9 +7,15 @@ validation_domains:
 - 1
 test_domains:
 - 2
-max_epochs: 5
-batch_size: 32
-num_workers: 4
-pin_memory: true
-prefetch_factor: true
-persistent_workers: false
+backbone: densenet121
+imagenet: true
+augmentation: true
+randaugment: false
+optimizer: adam
+learning_rate: 0.00001
+weight_decay: 0.000001
+lr_scheduler: none
+max_epochs: 100
+batch_size: 256
+num_workers: 16
+prefetch_factor: 8
