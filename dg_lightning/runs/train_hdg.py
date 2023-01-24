@@ -158,6 +158,9 @@ def freeze_weights(*modules: typing.Iterable[torch.nn.Module]) -> None:
 
 def main(args: argparse.Namespace) -> None:
 
+    # get global logger
+    logger = logging.getLogger('pytorch_lightning')
+
     # set random seed
     pl.seed_everything(args.seed)
 
@@ -168,16 +171,29 @@ def main(args: argparse.Namespace) -> None:
     if args.data == 'camelyon17':
         dm = Camelyon17DataModule.from_argparse_args(args)
         dm.setup(stage=None)
+
     elif args.data == 'poverty':
+        
         dm = PovertyMapDataModule.from_argparse_args(args)
         dm.setup(stage=None)
+
+        # FIXME: this is a hack ... find a better way to do this
+        setattr(args, 'train_domains', dm.train_domains)  # int <- str
+
     elif args.data == 'iwildcam':
+        
         raise NotImplementedError
+    
     elif args.data == 'rxrx1':
+        
         raise NotImplementedError
+    
     elif args.data == 'pacs':
+        
         raise NotImplementedError
+    
     else:
+        
         raise NotImplementedError
 
     # model
@@ -185,6 +201,7 @@ def main(args: argparse.Namespace) -> None:
 
     # load selection model (g) weights
     if os.path.isfile(args.pretrained_g_ckpt):
+        logger.info(f"Loading g weights from `{args.pretrained_g_ckpt}`.")
         model.g_encoder.load_state_dict(
             get_state_dict(
                 ckpt_file=args.pretrained_g_ckpt,
@@ -193,16 +210,21 @@ def main(args: argparse.Namespace) -> None:
         )
         model.g_predictor.load_state_dict(
             get_state_dict(
-                ckpt_file=args.pretrained_model_ckpt,
+                ckpt_file=args.pretrained_g_ckpt,
                 keys=['g_predictor', 'predictor', ]
             )
         )
+    else:
+        logger.info(f"Invalid g ckpt: `{args.pretrained_g_ckpt}`. Proceeding with random weights for g.")
+
 
     # freeze selection model weights
     if args.freeze_g_encoder:
         freeze_weights(model.g_encoder)
+        logger.info(f"Freezing g encoder weights.")
     if args.freeze_g_predictor:
         freeze_weights(model.g_predictor)
+        logger.info(f"Freezing g predictor(head) weights.")
 
     # logging & checkpointing
     save_dir = os.path.join(
@@ -211,7 +233,7 @@ def main(args: argparse.Namespace) -> None:
         f'{model.__class__.__name__}',
         f'{args.hash}'
     )
-    logging.getLogger('pytorch_lightning').info(f"Save directory: {save_dir}")
+    logger.info(f"Save directory: {save_dir}")
 
     # trainer
     trainer = pl.Trainer(
@@ -228,13 +250,13 @@ def main(args: argparse.Namespace) -> None:
             pl.callbacks.LearningRateMonitor(logging_interval='epoch'),
             pl.callbacks.EarlyStopping(
                 monitor=f'val_{args.monitor_metric}',
-                mode='max' if args.monitor_metric in ['accuracy', 'f1', 'pearson'] else 'min',  # FIXME: 
+                mode='max' if args.monitor_metric in ['accuracy', 'f1', 'pearson'] else 'min',  # FIXME: simplify
                 patience=args.early_stopping
             ),
             pl.callbacks.ModelCheckpoint(
                 dirpath=save_dir,
                 monitor=f'val_{args.monitor_metric}',
-                mode='max' if args.monitor_metric in ['accuracy', 'f1', 'pearson'] else 'min',  # FIXME: 
+                mode='max' if args.monitor_metric in ['accuracy', 'f1', 'pearson'] else 'min',  # FIXME: simplify
             ),
         ],
         log_every_n_steps=100,       # train log every 100 batch steps
@@ -270,6 +292,8 @@ def main(args: argparse.Namespace) -> None:
         ckpt_path='best',
         dataloaders=dm._ood_test_dataloader()
     )
+
+    # TODO: evaluate on id_test (if provided by data module)
 
 
 if __name__ == "__main__":
