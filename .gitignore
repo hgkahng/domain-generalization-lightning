@@ -133,3 +133,5 @@ data/
 checkpoints/
 logs/
 wandb/
+notebooks/
+.vscode/
