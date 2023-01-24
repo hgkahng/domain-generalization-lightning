@@ -104,6 +104,11 @@ def parse_arguments() -> argparse.Namespace:
                         help='GPU numbers (default: [])')
     parser.add_argument('--max_epochs', type=int, default=5,
                         help='Maximum number of training epochs (default: 5)')
+    parser.add_argument('--early_stopping', type=int, default=7,
+                        help='Patience in units of epochs until early stopping (default: 7)')
+    parser.add_argument('--monitor_metric', type=str, default='accuracy',
+                        choices=('accuracy', 'f1', 'pearson', 'mse', 'nll'),
+                        help='Metric to monitor for checkpointing & early stopping (default: accuracy)')
 
     # misc arguments
     parser.add_argument('--seed', type=int, default=42,
@@ -221,11 +226,15 @@ def main(args: argparse.Namespace) -> None:
             pl.callbacks.RichProgressBar(leave=True),
             pl.callbacks.RichModelSummary(max_depth=1),
             pl.callbacks.LearningRateMonitor(logging_interval='epoch'),
-            pl.callbacks.EarlyStopping(monitor='val_accuracy', mode='max', patience=3),
+            pl.callbacks.EarlyStopping(
+                monitor=f'val_{args.monitor_metric}',
+                mode='max' if args.monitor_metric in ['accuracy', 'f1', 'pearson'] else 'min',  # FIXME: 
+                patience=args.early_stopping
+            ),
             pl.callbacks.ModelCheckpoint(
                 dirpath=save_dir,
-                monitor='val_accuracy',
-                mode='max',
+                monitor=f'val_{args.monitor_metric}',
+                mode='max' if args.monitor_metric in ['accuracy', 'f1', 'pearson'] else 'min',  # FIXME: 
             ),
         ],
         log_every_n_steps=100,       # train log every 100 batch steps

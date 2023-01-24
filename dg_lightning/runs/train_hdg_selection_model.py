@@ -76,6 +76,8 @@ def parse_arguments() -> argparse.Namespace:
                         help='GPU numbers (default: [])')
     parser.add_argument('--max_epochs', type=int, default=30,
                         help='Maximum number of training epochs (default: 30)')
+    parser.add_argument('--early_stopping', type=int, default=7,
+                        help='Patience in units of epochs until early stopping (default: 7)')
 
     # misc arguments
     parser.add_argument('--seed', type=int, default=42,
@@ -152,7 +154,7 @@ def main(args: argparse.Namespace) -> None:
             pl.callbacks.RichProgressBar(leave=True),
             pl.callbacks.RichModelSummary(max_depth=1),
             pl.callbacks.LearningRateMonitor(logging_interval='epoch'),
-            pl.callbacks.EarlyStopping(monitor='val_f1', mode='max', patience=3),
+            pl.callbacks.EarlyStopping(monitor='val_f1', mode='max', patience=args.early_stopping),
             pl.callbacks.ModelCheckpoint(
                 dirpath=save_dir,
                 monitor='val_f1',
