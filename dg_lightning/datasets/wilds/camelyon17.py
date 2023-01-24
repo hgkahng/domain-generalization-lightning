@@ -25,10 +25,10 @@ class SingleCamelyon17(torch.utils.data.Dataset):
                  in_memory: typing.Optional[int] = 0) -> None:
         super().__init__()
 
-        self.root: str = root
-        self.hospital: int = hospital
-        self.split: str = split
-        self.in_memory: int = in_memory
+        self.root = root
+        self.hospital = int(hospital)
+        self.split = split
+        self.in_memory = in_memory
 
         if self.hospital not in self._allowed_hospitals:
             raise IndexError
@@ -135,38 +135,36 @@ class SingleCamelyon17(torch.utils.data.Dataset):
 
 
 class Camelyon17DataModule(pl.LightningDataModule):
-    def __init__(self,
-                 root: str = './data/wilds/camelyon17_v1.0',
-                 train_domains: typing.Iterable[int] = [0, 3, 4],
-                 validation_domains: typing.Iterable[int] = [1],
-                 test_domains: typing.Iterable[int] = [2],
-                 batch_size: int = 32,
-                 num_workers: int = 4,
-                 pin_memory: typing.Optional[bool] = True,
-                 prefetch_factor: typing.Optional[int] = 2,
-                 persistent_workers: typing.Optional[bool] = False,
-                 ) -> None:
+    def __init__(
+        self,
+        root: str = './data/wilds/camelyon17_v1.0',
+        train_domains: typing.Iterable[int] = [0, 3, 4],
+        validation_domains: typing.Iterable[int] = [1],
+        test_domains: typing.Iterable[int] = [2],
+        batch_size: int = 32,
+        num_workers: typing.Optional[int] = 4,
+        prefetch_factor: typing.Optional[int] = 2,
+        ) -> None:
+        
         super().__init__()
         self.save_hyperparameters()
         
         # dataset arguments
         self.root = root
-        self.train_domains = train_domains
-        self.validation_domains = validation_domains
-        self.test_domains = test_domains
+        self.train_domains = [int(d) for d in train_domains]
+        self.validation_domains = [int(d) for d in validation_domains]
+        self.test_domains = [int(d) for d in test_domains]
         
         # dataloader arguments
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.pin_memory = pin_memory
         self.prefetch_factor = prefetch_factor
-        self.persistent_workers = persistent_workers
 
-    def prepare_data(self):
+    def prepare_data(self) -> None:
         if not os.path.isdir(self.root):
             raise FileNotFoundError
 
-    def setup(self, stage: typing.Optional[str] = None):
+    def setup(self, stage: typing.Optional[str] = None) -> None:
         
         # collection of datasets
         self._train_datasets = list()
@@ -177,7 +175,7 @@ class Camelyon17DataModule(pl.LightningDataModule):
 
         if (stage is None) or (stage == 'fit') or (stage == 'validate'):
             
-            # (1) train / id-validation domains
+            # (1) train / id-validation
             for domain in self.train_domains:
                 self._train_datasets += [
                     SingleCamelyon17(root=self.root, hospital=domain, split='train')
@@ -186,7 +184,7 @@ class Camelyon17DataModule(pl.LightningDataModule):
                     SingleCamelyon17(root=self.root, hospital=domain, split='val')
                 ]
 
-            # (2) ood-validation domains
+            # (2) ood-validation
             for domain in self.validation_domains:
                 self._ood_validation_datasets += [
                     SingleCamelyon17(root=self.root, hospital=domain, split=None)
@@ -194,12 +192,11 @@ class Camelyon17DataModule(pl.LightningDataModule):
         
         if (stage is None) or (stage == 'test'):            
             
-            # (3) ood-test domains
+            # (3) ood-test
             for domain in self.test_domains:
                 self._ood_test_datasets += [
                     SingleCamelyon17(root=self.root, hospital=domain, split=None)
                 ]
-
 
     def train_dataloader(self,
                          sampler: typing.Optional[torch.utils.data.Sampler] = None) -> DataLoader:
@@ -255,9 +252,7 @@ class Camelyon17DataModule(pl.LightningDataModule):
     def general_loader_config(self) -> typing.Dict[str, typing.Any]:
         return {
             'num_workers': self.num_workers,
-            'pin_memory': self.pin_memory,
             'prefetch_factor': self.prefetch_factor,
-            'persistent_workers': self.persistent_workers,
         }
 
     @classmethod
@@ -267,22 +262,3 @@ class Camelyon17DataModule(pl.LightningDataModule):
         init_arg_names = [k for k in inspect.signature(cls.__init__).parameters]
         init_kwargs = {k: v for k, v in vars(args).items() if k in init_arg_names}
         return cls(**init_kwargs)
-
-    @classmethod
-    def add_data_specific_args(cls,
-                               parent_parser: argparse.ArgumentParser,
-                               ) -> argparse.ArgumentParser:
-        
-        parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
-        
-        group = parser.add_argument_group(f"{cls.__name__}")
-        group.add_argument('--train_domains', nargs='+', type=int, default=[], help='')
-        group.add_argument('--validation_domains', nargs='+', type=int, default=[], help='')
-        group.add_argument('--test_domains', nargs='+', type=int, default=[], help='')
-        group.add_argument('--batch_size', type=int, default=16, help='')
-        group.add_argument('--num_workers', type=int, default=4, help='')
-        group.add_argument('--pin_memory', dest='pin_memory', action='store_true')
-        group.add_argument('--prefetch_factor', type=int, default=2, help='')
-        group.add_argument('--persistent_workers', dest='persistent_workers', action='store_true')
-        
-        return parser
