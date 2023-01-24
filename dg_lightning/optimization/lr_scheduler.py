@@ -29,6 +29,10 @@ def create_learning_rate_scheduler(
             warmup_epochs=kwargs.get('warmup_epochs', 0),
             min_lr=kwargs.get('min_lr', 0.)
         )
+    elif name == 'cosine_decay_epoch':
+        raise NotImplementedError
+    elif name == 'cosine_decay_batch':
+        raise NotImplementedError
     elif name == 'step':
         # use for `PovertyMap`
         return optim.lr_scheduler.StepLR(
@@ -39,7 +43,7 @@ def create_learning_rate_scheduler(
     elif name == 'cyclic':
         raise NotImplementedError
     elif (name == 'none') or (name is None):
-        return None
+        return DummyLRScheduler(optimizer=optimizer)
     else:
         raise ValueError(f"name=`{name}` not recognized.")
 
@@ -121,3 +125,14 @@ class LinearWarmupCosineDecayLR(optim.lr_scheduler._LRScheduler):
     @staticmethod
     def cosine_decay_lr(t: int, T: int, base_lr: float, min_lr: float) -> float:
         return min_lr + (base_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * t / T))
+
+
+class DummyLRScheduler(optim.lr_scheduler._LRScheduler):
+    def __init__(self,
+                 optimizer: optim.Optimizer,
+                 last_epoch: int = -1,
+                 verbose: bool = False):
+        super(DummyLRScheduler, self).__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        return [group['lr'] for group in self.optimizer.param_groups]
