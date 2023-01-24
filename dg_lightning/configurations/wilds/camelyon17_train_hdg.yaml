@@ -1,0 +1,31 @@
+data: camelyon17
+train_domains:
+- 0
+- 3
+- 4
+validation_domains:
+- 1
+test_domains:
+- 2
+backbone: densenet121
+imagenet: true
+augmentation: true
+randaugment: false
+g_optimizer: adamw
+g_learning_rate: 0.0001
+g_weight_decay: 0.00001
+g_lr_scheduler: none
+pretrained_g_ckpt: none
+freeze_g_encoder: false
+freeze_g_predictor: false
+f_optimizer: sgd
+f_learning_rate: 0.03
+f_weight_decay: 0.00001
+f_lr_scheduler: cosine_decay
+c_optimizer: adam
+c_learning_rate: 0.01
+c_lr_scheduler: none
+batch_size: 256
+num_workers: 16
+prefetch_factor: 8
+max_epochs: 30
