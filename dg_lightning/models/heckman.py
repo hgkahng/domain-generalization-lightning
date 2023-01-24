@@ -23,11 +23,12 @@ from dg_lightning.utils.lightning_utils import from_argparse_args
 
 
 data2task = {
-    'pacs': 'multiclass',
     'camelyon17': 'binary',
-    'povertymap': 'regression',
+    'poverty': 'regression',
     'iwildcam': 'multiclass',
     'rxrx1': 'multiclass',
+    'pacs': 'multiclass',
+    'vlcs': 'multiclass',
 }
 
 
@@ -37,17 +38,17 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
         data: str,
         backbone: str,
         train_domains: List[int],
-        pretrained: bool = True,
+        imagenet: bool = True,
         augmentation: bool = True,
         randaugment: bool = False,
-        optimizer: str = 'sgd',
-        learning_rate: float = 3e-2,
+        optimizer: str = 'adamw',
+        learning_rate: float = 1e-4,
         weight_decay: float = 1e-5,
-        lr_scheduler: str = 'cosine_decay',
+        lr_scheduler: str = None,
         max_epochs: int = 5,
         ) -> None:
         super().__init__()
-        self.save_hyperparameters(ignore=['train_domains'])
+        self.save_hyperparameters(ignore=['train_domains'])  # TODO: print hparams as table
         self.register_buffer('train_domains', torch.LongTensor(train_domains))
         self.automatic_optimization = False
 
@@ -56,7 +57,7 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
             NetworkInitializer.initialize_backbone(
                 name=self.hparams.backbone,
                 data=self.hparams.data,
-                pretrained=self.hparams.pretrained,
+                pretrained=self.hparams.imagenet,
             )
 
         # (1) domain classifer
@@ -78,8 +79,8 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
                 randaugment=False,
             )
 
-    def training_step(self, batch, batch_idx: int = 0) -> typing.Dict[str, torch.Tensor]:
-        
+    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int = 0) -> Dict[str, torch.Tensor]:
+
         s_pred, s_true = self._shared_step(batch, training=True)
 
         opt = self.optimizers()
@@ -99,19 +100,16 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
 
         return {'s_true': s_true, 's_pred': s_pred}
 
-    def validation_step(self, batch, batch_idx: int = 0) -> typing.Dict[str, torch.Tensor]:
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int = 0) -> Dict[str, torch.Tensor]:
         s_pred, s_true = self._shared_step(batch, training=False)
         return {'s_true': s_true, 's_pred': s_pred}
 
-    def test_step(self, batch, batch_idx: int = 0) -> typing.Dict[str, torch.Tensor]:
+    def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int = 0) -> Dict[str, torch.Tensor]:
         s_pred, s_true = self._shared_step(batch, training=False)
         return {'s_true': s_true, 's_pred': s_pred}
 
-    def _shared_step(self,
-                     batch: typing.Dict[str, torch.Tensor],
-                     training: bool = True,
-                     ) -> typing.Tuple[torch.Tensor]:
-        
+    def _shared_step(self, batch: Dict[str, torch.Tensor], training: bool = True) -> Tuple[torch.Tensor]:
+
         # fetch data
         x, domain = batch['x'], batch['domain']
 
@@ -120,7 +118,7 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
             x = self.train_transform(x)
         else:
             x = self.eval_transform(x)
-        
+
         # forward; (B, K)
         s_pred_in_probits = self.predictor(self.encoder(x))
 
@@ -140,11 +138,11 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
         self._shared_epoch_end(outputs, prefix='test')
 
     def _shared_epoch_end(self, outputs: List[Dict[str, torch.Tensor]], prefix: str) -> None:
-        
+
         # concatenate batch outputs
         s_true = torch.cat([out['s_true'] for out in outputs], dim=0)  # (N,  )
         s_pred = torch.cat([out['s_pred'] for out in outputs], dim=0)  # (N, K)
-        
+
         # process `s_pred` and `s_true` to required format
         s_true = torch.zeros_like(s_pred).scatter(dim=1, index=s_true.view(-1, 1), value=1.)
         s_pred = torch.distributions.Normal(loc=0., scale=1.).cdf(s_pred)
@@ -167,9 +165,9 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
         optimizer = \
             create_optimizer(
                 params=filter(lambda p: p.requires_grad, self.parameters()),
-                name=self.hparams.optimizer,             # TODO:
-                lr=self.hparams.learning_rate,           # TODO:
-                weight_decay=self.hparams.weight_decay,  # TODO: 
+                name=self.hparams.optimizer,
+                lr=self.hparams.learning_rate,
+                weight_decay=self.hparams.weight_decay,
             )
 
         lr_scheduler = \
@@ -236,26 +234,6 @@ class HeckmanDGDomainClassifier(pl.LightningModule):
                            **kwargs) -> pl.LightningModule:
         return from_argparse_args(cls, args, **kwargs)
 
-    @classmethod
-    def add_model_specific_args(cls,
-                                parent_parser: argparse.ArgumentParser,
-                                ) -> argparse.ArgumentParser:
-        
-        parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
-
-        group = parser.add_argument_group(f"{cls.__name__}")
-        group.add_argument('--data', type=str, default='camelyon17', help='')
-        group.add_argument('--backbone', type=str, default='densnet121', help='')
-        group.add_argument('--pretrained', action='store_true', help='')
-        group.add_argument('--augmentation', action='store_true', help='')
-        group.add_argument('--randaugment', action='store_true', help='')
-        group.add_argument('--optimizer', type=str, default='sgd', help='')
-        group.add_argument('--learning_rate', type=float, default=3e-2, help='')
-        group.add_argument('--weight_decay', type=float, default=1e-5, help='')
-        group.add_argument('--lr_scheduler', type=str, default=None, help='')
-
-        return parser
-
 
 class HeckmanDG(pl.LightningModule):
     def __init__(
@@ -266,14 +244,22 @@ class HeckmanDG(pl.LightningModule):
         imagenet: bool = True,
         augmentation: bool = True,
         randaugment: bool = False,
-        optimizer: str = 'sgd',
-        learning_rate: float = 3e-2,
-        weight_decay: float = 1e-5,
-        lr_scheduler: str = 'cosine_decay',
+        g_optimizer: str = 'adamw',
+        g_learning_rate: float = 1e-4,
+        g_weight_decay: float = 1e-5,
+        g_lr_scheduler: str = None,
+        f_optimizer: str = 'sgd',
+        f_learning_rate: float = 3e-2,
+        f_weight_decay: float = 1e-5,
+        f_lr_scheduler: str = 'cosine_decay',
+        c_optimizer: str = 'adam',
+        c_learning_rate: float = 1e-2,
+        c_weight_decay: float = 0.,
+        c_lr_scheduler: str = None,
         max_epochs: int = 5,
         ) -> None:
         super().__init__()
-        self.save_hyperparameters(ignore=['train_domains'])
+        self.save_hyperparameters(ignore=['train_domains'])  # TODO: print for sanity check
         self.register_buffer('train_domains', torch.LongTensor(train_domains))
         self.automatic_optimization = False
         self.task = data2task[self.hparams.data]
@@ -285,7 +271,7 @@ class HeckmanDG(pl.LightningModule):
                 data=self.hparams.data,
                 pretrained=self.hparams.imagenet,
             )
-        
+
         # (1) domain classifier ($\omega_g$)
         self.g_predictor = \
             nn.Linear(
@@ -322,7 +308,7 @@ class HeckmanDG(pl.LightningModule):
                 nn.Parameter(
                     data=torch.zeros(K, requires_grad=True)
                 )
-        
+
         self.sigma = \
             nn.Parameter(
                 data=torch.ones(1),
@@ -341,13 +327,13 @@ class HeckmanDG(pl.LightningModule):
                 randaugment=False,
             )
 
-    def training_step(self, batch, batch_idx: int = 0) -> typing.Dict[str, torch.Tensor]:
-        
+    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int = 0) -> Dict[str, torch.Tensor]:
+
         # forward
         s_pred, s_true = self._shared_g_step(batch, training=True)  # probits, 1d
         y_pred, y_true = self._shared_f_step(batch, training=True)  # probits, 1d
         rho = torch.tanh(self._rho[s_true])                         # (B,  ) or (B, J+1)
-        
+
         # compute loss
         loss = self.loss_function(
             y_pred=y_pred, y_true=y_true, s_pred=s_pred, s_true=s_true,
@@ -362,13 +348,18 @@ class HeckmanDG(pl.LightningModule):
 
         self.log('train_loss', loss.item(), on_step=True, prog_bar=True, reduce_fx='mean')
 
+        if self.trainer.is_last_batch:
+            g_sch, f_sch, corr_sch = self.lr_schedulers()
+            g_sch.step(); f_sch.step(); corr_sch.step()
+
         return {
             's_true': s_true, 's_pred': s_pred,
             'y_true': y_true, 'y_pred': y_pred,
+            'eval_group': batch['eval_group']
         }
 
-    def validation_step(self, batch, batch_idx: int = 0) -> typing.Dict[str, torch.Tensor]:
-        
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int = 0) -> Dict[str, torch.Tensor]:
+
         # forward (inference)
         s_pred, s_true = self._shared_g_step(batch, training=False)
         y_pred, y_true = self._shared_f_step(batch, training=False)
@@ -379,10 +370,10 @@ class HeckmanDG(pl.LightningModule):
             'eval_group': batch['eval_group']
         }
 
-    def test_step(self, batch, batch_idx: int = 0) -> typing.Dict[str, torch.Tensor]:
-        
+    def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int = 0) -> Dict[str, torch.Tensor]:
+
         # forward (inference)
-        s_pred, s_true = self._shared_g_step(batch, training=False)
+        s_pred, s_true = self._shared_g_step(batch, training=False)  # unnecessary?
         y_pred, y_true = self._shared_f_step(batch, training=False)
 
         return {
@@ -402,7 +393,7 @@ class HeckmanDG(pl.LightningModule):
             x = self.train_transform(x)
         else:
             x = self.eval_transform(x)
-        
+
         # forward; (B, K)
         s_pred_in_probits = self.g_predictor(self.g_encoder(x))
 
@@ -423,7 +414,7 @@ class HeckmanDG(pl.LightningModule):
             x = self.train_transform(x)
         else:
             x = self.eval_transform(x)
-        
+
         # forward
         y_pred_in_probits = self.f_predictor(self.f_encoder(x))
         if (y_pred_in_probits.ndim == 2) and (y_pred_in_probits.size(1) == 1):
@@ -433,7 +424,7 @@ class HeckmanDG(pl.LightningModule):
 
     def train_epoch_end(self, outputs: List[Dict[str, torch.Tensor]]) -> None:
         self._shared_epoch_end(outputs, prefix='train')
-    
+
     def validation_epoch_end(self, outputs: List[Dict[str, torch.Tensor]]) -> None:
         self._shared_epoch_end(outputs, prefix='val')
 
@@ -448,7 +439,7 @@ class HeckmanDG(pl.LightningModule):
         eval_group = torch.cat([out['eval_group'] for out in outputs], dim=0)
         y_true = torch.cat([out['y_true'] for out in outputs], dim=0)
         y_pred = torch.cat([out['y_pred'] for out in outputs], dim=0)
-        y_probs = self._process_pred_for_eval(y_pred)
+        y_probs = self._process_pred_for_eval(y_pred)  # probits to probs
 
         # evaluate metrics
         evaluator = MetricEvaluator(data=self.hparams.data)
@@ -456,22 +447,22 @@ class HeckmanDG(pl.LightningModule):
 
         self.log_dict(
             {f"{prefix}_{name}": val for name, val in metrics.items()},
-            prog_bar=True, on_epoch=True, 
+            prog_bar=True, on_epoch=True,
         )
 
     def _process_pred_for_eval(self, y_pred: torch.FloatTensor) -> torch.FloatTensor:
         normal = torch.distributions.Normal(loc=0., scale=1.)
         if self.task == 'regression':
-            return y_pred
+            return y_pred                    # as-is
         elif self.task == 'binary':
             normal = torch.distributions.Normal(loc=0., scale=1.)
-            return normal.cdf(y_pred)
+            return normal.cdf(y_pred)        # probs
         elif self.task == 'multiclass':
             # FIXME: this is a proxy
-            return F.softmax(y_pred, dim=1)
+            return F.softmax(y_pred, dim=1)  # probs
         else:
             raise NotImplementedError
-    
+
     def configure_optimizers(self) -> Tuple[List[torch.optim.Optimizer],
                                             List[torch.optim.lr_scheduler._LRScheduler]]:
         """Add function docstring."""
@@ -482,48 +473,48 @@ class HeckmanDG(pl.LightningModule):
                     {'params': filter(lambda p: p.requires_grad, self.g_encoder.parameters())},
                     {'params': filter(lambda p: p.requires_grad, self.g_predictor.parameters())},
                 ],
-                name=self.hparams.optimizer[0],
-                lr=self.hparams.learning_rate[0],
-                weight_decay=self.hparams.weight_decay[0],
+                name=self.hparams.g_optimizer,
+                lr=self.hparams.g_learning_rate,
+                weight_decay=self.hparams.g_weight_decay,
             )
-        
+
         f_opt = \
             create_optimizer(
                 params=[
                     {'params': filter(lambda p: p.requires_grad, self.f_encoder.parameters())},
                     {'params': filter(lambda p: p.requires_grad, self.f_predictor.parameters())},
                 ],
-                name=self.hparams.optimizer[1],
-                lr=self.hparams.learning_rate[1],
-                weight_decay=self.hparams.weight_decay[1],
+                name=self.hparams.f_optimizer,
+                lr=self.hparams.f_learning_rate,
+                weight_decay=self.hparams.f_weight_decay,
             )
 
         corr_opt = \
             create_optimizer(
                 params=filter(lambda p: p.requires_grad, [self._rho, self.sigma]),
-                name=self.hparams.optimizer[2],
-                lr=self.hparams.learning_rate[2],
-                weight_decay=self.hparams.weight_decay[2],
+                name=self.hparams.c_optimizer,
+                lr=self.hparams.c_learning_rate,
+                weight_decay=self.hparams.c_weight_decay,
             )
 
         g_lr_sch = \
             create_learning_rate_scheduler(
                 optimizer=g_opt,
-                name=self.hparams.lr_scheduler[0],
+                name=self.hparams.g_lr_scheduler,
                 epochs=self.hparams.max_epochs
             )
 
         f_lr_sch = \
             create_learning_rate_scheduler(
                 optimizer=f_opt,
-                name=self.hparams.lr_scheduler[1],
+                name=self.hparams.f_lr_scheduler,
                 epochs=self.hparams.max_epochs
             )
 
         corr_lr_sch = \
             create_learning_rate_scheduler(
                 optimizer=corr_opt,
-                name=self.hparams.lr_scheduler[2],
+                name=self.hparams.c_lr_scheduler,
                 epochs=self.hparams.max_epochs
             )
 
@@ -684,14 +675,14 @@ class HeckmanDG(pl.LightningModule):
 
         HeckmanDG
 
-        grids: typing.List[torch.FloatTensor] = [
+        grids: List[torch.FloatTensor] = [
             HeckmanDG.linspace_with_grads(start=0, stop=r, steps=steps) for r in rho
         ]                              #  N * (steps,  )
         x = torch.stack(grids, dim=0)  # (N, steps)
         y = 1 / torch.sqrt(1 - torch.pow(x, 2)) * torch.exp(
             - (torch.pow(a, 2) + torch.pow(b, 2) - 2 * a * b * x) / (2 * (1 - torch.pow(x, 2)))
         )
-        
+
         return \
             normal.cdf(a.squeeze()) * normal.cdf(b.squeeze()) + \
             (1 / (2 * torch.pi)) * torch.trapezoid(y=y, x=x)
@@ -705,13 +696,18 @@ class HeckmanDG(pl.LightningModule):
         Reference:
             https://github.com/esa/torchquad/blob/4be241e8462949abcc8f1ace48d7f8e5ee7dc136/torchquad/integration/utils.py#L7
         """
-        grid = torch.linspace(0, 1, steps, device=start.device)  # create 0 ~ 1 equally spaced grid
+        grid = torch.linspace(0, 1, steps, device=stop.device)   # create 0 ~ 1 equally spaced grid
         grid *= stop - start                                     # scale grid to desired range
         grid += start
         return grid
 
     @staticmethod
-    def cross_domain_multiclass_classification_loss():
+    def cross_domain_multiclass_classification_loss(y_pred,
+                                                    y_true,
+                                                    s_pred,
+                                                    s_true,
+                                                    rho,
+                                                    eps: Optional[float] = 1e-7) -> torch.FloatTensor:
         raise NotImplementedError
 
     @classmethod
@@ -719,23 +715,3 @@ class HeckmanDG(pl.LightningModule):
                            args: Union[argparse.Namespace, Dict[str, Any]],
                            **kwargs) -> pl.LightningModule:
         return from_argparse_args(cls, args, **kwargs)
-
-    @classmethod
-    def add_model_specific_args(cls,
-                                parent_parser: argparse.ArgumentParser,
-                                ) -> argparse.ArgumentParser:
-        
-        parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
-
-        group = parser.add_argument_group(f"{cls.__name__}")
-        group.add_argument('--data', type=str, default='camelyon17', help='')
-        group.add_argument('--backbone', type=str, default='densnet121', help='')
-        group.add_argument('--imagenet', action='store_true', help='')
-        group.add_argument('--augmentation', action='store_true', help='')
-        group.add_argument('--randaugment', action='store_true', help='')
-        group.add_argument('--optimizer', type=str, default='sgd', help='')
-        group.add_argument('--learning_rate', type=float, default=3e-2, help='')
-        group.add_argument('--weight_decay', type=float, default=1e-5, help='')
-        group.add_argument('--lr_scheduler', type=str, default=None, help='')
-
-        return parser
