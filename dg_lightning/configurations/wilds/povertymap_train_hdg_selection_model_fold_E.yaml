@@ -1,0 +1,40 @@
+data: poverty
+backbone: resnet18
+train_domains:
+- benin
+- burkina_faso
+- cameroon
+- democratic_republic_of_congo
+- ghana
+- guinea
+- malawi
+- mozambique
+- nigeria
+- sierra_leone
+- tanzania
+- togo
+- uganda
+- zimbabwe
+validation_domains:
+- angola
+- cote_d_ivoire
+- ethiopia
+- mali
+- rwanda
+test_domains:
+- kenya
+- lesotho
+- senegal
+- zambia
+backbone: resnet18
+imagenet: true
+augmentation: true
+randaugment: false
+optimizer: adam
+learning_rate: 0.0001
+weight_decay: 0.00001
+lr_scheduler: none
+max_epochs: 100
+batch_size: 64
+num_workers: 16
+prefetch_factor: 8
