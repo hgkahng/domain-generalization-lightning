@@ -106,4 +106,5 @@ python dg_lightning/runs/train_hdg.py --help
     - [ ] PACS
     - [ ] VLCS
 - [x] Learning rate scheduling 
+- [ ] Monitor $g$ performance when training HeckmanDG (i.e., `dg_lightning/runs/train_hdg.py`)
 - [ ] A Jupyter notebook tutorial on running HeckmanDG on custom data
